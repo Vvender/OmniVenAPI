@@ -2,7 +2,7 @@ from fastapi import APIRouter, Path, HTTPException, status
 from passlib.context import CryptContext
 from sqlalchemy import text
 from routers.dependencies.connection import db_dependency
-from routers.schemas.users import MobileUserRequest, MobileUserResponse
+from routers.schemas.users import MobileUserResponse, MobileUserResponse
 from utils.validations import validate_user_unique_fields
 from models import MobileUser
 
@@ -30,7 +30,7 @@ async def get_user_by_id(db: db_dependency, user_id: int = Path(..., gt=0)):
 
 #*****************************************POST REQUEST*****************************************
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=MobileUserResponse)
-async def create_user(db: db_dependency, user_data: MobileUserRequest):
+async def create_user(db: db_dependency, user_data: MobileUserResponse):
     try:
         # Şirket kontrolü
         company = db.execute(
@@ -80,7 +80,7 @@ async def create_user(db: db_dependency, user_data: MobileUserRequest):
 @router.put("/{user_id}", response_model=MobileUserResponse)
 async def update_user(
         db: db_dependency,
-        user_data: MobileUserRequest,
+        user_data: MobileUserResponse,
         user_id: int = Path(gt=0)
 ):
     # Şirket kontrolü

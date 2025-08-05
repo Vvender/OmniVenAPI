@@ -1,18 +1,41 @@
+# database.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 import os
 
-# .env dosyasını yükle
+# Load environment variables from .env file
 load_dotenv()
 
-# Ortam değişkeninden DATABASE_URL'i al
+# Get DATABASE_URL from environment variables
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Hata kontrolü: Değer gelmemişse program baştan hata versin
+# Validate configuration - fail fast if missing
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL not set in .env file.")
+    raise ValueError("DATABASE_URL environment variable not found in .env file")
 
-# SQLAlchemy motorunu oluştur
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Database engine configuration
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,  # Optional: checks connection health before use
+    pool_recycle=3600    # Optional: recycle connections after 1 hour
+)
+
+# Session factory configuration
+SessionLocal = sessionmaker(
+    autocommit=False,    # Explicit transaction control
+    autoflush=False,     # Manual flush control
+    bind=engine          # Bind to our database engine
+)
+
+# Dependency for FastAPI routes
+def get_db():
+    """
+    Generator function that yields database sessions.
+    Ensures proper session cleanup after request completion.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

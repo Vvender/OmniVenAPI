@@ -1,193 +1,150 @@
 from fastapi import APIRouter, Path, HTTPException, status, Depends
 from passlib.context import CryptContext
 from sqlalchemy import text
+from datetime import datetime
+from typing import Annotated, List
+
+# Import dependencies and schemas
 from routers.dependencies.connection import db_dependency
-from routers.schemas.users import MobileUserRequest, MobileUserResponse
+from routers.schemas.users import (
+    MobileUserResponse,
+    MobileUserUpdateRequest,
+    MobileUserCreateRequest
+)
 from utils.validations import validate_user_unique_fields
 from models import MobileUser
-from datetime import datetime
-from typing import Annotated
+from routers.authentication import get_current_user
 
-# JWT için auth modülünden dependency'leri import ediyoruz
-from routers.auth import get_current_user
-
+# Initialize APIRouter with prefix and tags for Swagger docs
 router = APIRouter(
     prefix="/user",
     tags=["User"]
 )
 
-# Şifreleme için bcrypt context
+# Password hashing context using bcrypt
 bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
-# Dependency tip tanımı (JWT korumalı endpoint'lerde kullanılacak)
+# Dependency to get current authenticated user
 current_user_dependency = Annotated[MobileUser, Depends(get_current_user)]
 
+#------------------------------ HELPER FUNCTIONS ------------------------------
 
-# *****************************************GET REQUEST*****************************************
-@router.get("/", response_model=list[MobileUserResponse], summary="Get all users")
-async def get_all_users(db: db_dependency, current_user: current_user_dependency):
-    """
-    Tüm kullanıcıları listeler (Sadece admin erişebilir)
-
-    - **current_user**: JWT token ile oturum açmış kullanıcı (otomatik alınır)
-    """
-    # Basit admin kontrolü (status=5 admin kabul ediyoruz)
+def verify_admin(current_user: MobileUser):
+    """Check if a user has admin privileges (status=5)"""
     if current_user.status != 5:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin users can access this endpoint"
+            detail="Admin privileges required"
         )
+
+def verify_owner_or_admin(current_user: MobileUser, user_id: int):
+    """Verify if requester is the account owner or an admin"""
+    if current_user.user_id != user_id and current_user.status != 5:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+
+def check_company_exists(db: db_dependency, company_id: int):
+    """Validate that company exists in a database"""
+    if not db.execute(
+            text("SELECT 1 FROM acc_company WHERE company_id = :company_id"),
+            {"company_id": company_id}
+    ).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid company ID"
+        )
+
+#------------------------------ GET ENDPOINTS ------------------------------
+
+@router.get("/", response_model=List[MobileUserResponse])
+async def list_users(
+        db: db_dependency,
+        current_user: current_user_dependency
+):
+    """Get all users (Admin-only endpoint)"""
+    verify_admin(current_user)
     return db.query(MobileUser).all()
 
-
-@router.get("/{user_id}", response_model=MobileUserResponse, summary="Get user by ID")
-async def get_user_by_id(
+@router.get("/{user_id}", response_model=MobileUserResponse)
+async def get_user(
         db: db_dependency,
-        user_id: int = Path(..., gt=0),
+        user_id: int = Path(..., gt=0),  # Path parameter must be > 0
         current_user: current_user_dependency = None
 ):
-    """
-    ID'ye göre kullanıcı getirir
-
-    - **user_id**: Aranan kullanıcının ID'si (1'den büyük olmalı)
-    - Admin olmayanlar sadece kendi bilgilerini görebilir
-    """
+    """Get specific user by ID (Owner or Admin only)"""
     user = db.query(MobileUser).filter(MobileUser.user_id == user_id).first()
-
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
 
-    # Admin değilse ve başka bir kullanıcıyı sorguluyorsa engelle
-    if current_user.status != 5 and current_user.user_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only view your own profile"
-        )
-
+    verify_owner_or_admin(current_user, user_id)
     return user
 
-
-@router.get("/me", response_model=MobileUserResponse, summary="Get current user details")
-async def get_my_details(current_user: current_user_dependency):
-    """
-    Oturum açmış kullanıcının kendi bilgilerini getirir
-
-    - Token gerektirir
-    - Kullanıcıyı veritabanından tekrar sorgulamaz, token'dan alır
-    """
+@router.get("/me", response_model=MobileUserResponse)
+async def get_current_user(current_user: current_user_dependency):
+    """Get profile of currently authenticated user"""
     return current_user
 
+#------------------------------ POST ENDPOINT ------------------------------
 
-# *****************************************POST REQUEST*****************************************
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=MobileUserResponse)
 async def create_user(
         db: db_dependency,
-        user_data: MobileUserRequest,
-        current_user: current_user_dependency = None
+        user_data: MobileUserCreateRequest,
+        current_user: current_user_dependency
 ):
-    """
-    Yeni kullanıcı oluşturur (Adminler için)
+    """Create a new user account (Admin only)"""
+    verify_admin(current_user)
+    check_company_exists(db, user_data.company_id)
 
-    - Şirket varlığını kontrol eder
-    - Benzersiz alanları validate eder
-    - Şifreyi hash'ler
-    """
-    # Eğer admin kontrolü istiyorsanız:
-    if current_user and current_user.status != 5:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admin users can create new users"
-        )
+    # Validate unique fields (email, username, phone)
+    validate_user_unique_fields(
+        db,
+        email=user_data.email,
+        username=user_data.username,
+        phone_number=user_data.phone_number
+    )
+
+    # Create new user with hashed password
+    new_user = MobileUser(
+        company_id=user_data.company_id,
+        email=user_data.email,
+        username=user_data.username,
+        password=bcrypt_context.hash(user_data.password),
+        status=user_data.status,
+        phone_number=user_data.phone_number,
+        date_c=datetime.now(),  # Set creation timestamp
+        date_expiration=user_data.date_expiration,
+        notification=user_data.notification,
+        device=user_data.device
+    )
 
     try:
-        # Şirket kontrolü
-        company = db.execute(
-            text("SELECT 1 FROM acc_company WHERE company_id = :company_id"),
-            {"company_id": user_data.company_id}
-        ).first()
-
-        if not company:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Company with ID {user_data.company_id} does not exist"
-            )
-
-        # Benzersiz alan kontrolü
-        validate_user_unique_fields(
-            db,
-            email=user_data.email,
-            username=user_data.username,
-            phone_number=user_data.phone_number
-        )
-
-        # Şifreyi hash'le
-        hashed_password = bcrypt_context.hash(user_data.password)
-
-        # Yeni kullanıcı oluştur
-        new_user = MobileUser(
-            company_id=user_data.company_id,
-            email=user_data.email,
-            username=user_data.username,
-            password=hashed_password,
-            status=user_data.status,
-            phone_number=user_data.phone_number,
-            date_c=datetime.now(),
-            date_expiration=user_data.date_expiration,
-            notification=user_data.notification,
-            device=user_data.device
-        )
-
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
         return new_user
-
-    except HTTPException as http_exc:
-        raise http_exc
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail="User creation failed"
         )
 
+#------------------------------ PUT ENDPOINT ------------------------------
 
-# *****************************************PUT REQUEST*****************************************
 @router.put("/{user_id}", response_model=MobileUserResponse)
 async def update_user(
         db: db_dependency,
-        user_data: MobileUserRequest,
-        user_id: int = Path(gt=0),
+        user_data: MobileUserUpdateRequest,
+        user_id: int = Path(..., gt=0),
         current_user: current_user_dependency = None
 ):
-    """
-    Kullanıcı bilgilerini günceller
-
-    - Adminler tüm kullanıcıları güncelleyebilir
-    - Normal kullanıcılar sadece kendi bilgilerini güncelleyebilir
-    """
-    # Yetki kontrolü
-    if current_user and current_user.status != 5 and current_user.user_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own profile"
-        )
-
-    # Şirket kontrolü
-    company = db.execute(
-        text("SELECT 1 FROM acc_company WHERE company_id = :company_id"),
-        {"company_id": user_data.company_id}
-    ).first()
-
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Company with ID {user_data.company_id} does not exist"
-        )
-
+    """Update user profile (Owner or Admin only)"""
     user = db.query(MobileUser).filter(MobileUser.user_id == user_id).first()
     if not user:
         raise HTTPException(
@@ -195,7 +152,10 @@ async def update_user(
             detail="User not found"
         )
 
-    # Güncelleme için benzersiz alan kontrolü (mevcut kullanıcıyı hariç tut)
+    verify_owner_or_admin(current_user, user_id)
+    check_company_exists(db, user_data.company_id)
+
+    # Validate unique fields excluding current user
     validate_user_unique_fields(
         db,
         email=user_data.email,
@@ -204,7 +164,7 @@ async def update_user(
         exclude_user_id=user_id
     )
 
-    # Alanları güncelle
+    # Update all fields
     user.company_id = user_data.company_id
     user.email = user_data.email
     user.username = user_data.username
@@ -214,40 +174,45 @@ async def update_user(
     user.notification = user_data.notification
     user.device = user_data.device
 
-    # Şifre değişmişse hash'le
+    # Update password only if provided
     if user_data.password:
         user.password = bcrypt_context.hash(user_data.password)
 
-    db.commit()
-    db.refresh(user)
-    return user
+    try:
+        db.commit()
+        db.refresh(user)
+        return user
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Profile update failed"
+        )
 
+#------------------------------ DELETE ENDPOINT ------------------------------
 
-# *****************************************DELETE REQUEST*****************************************
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
         db: db_dependency,
-        user_id: int = Path(gt=0),
+        user_id: int = Path(..., gt=0),
         current_user: current_user_dependency = None
 ):
-    """
-    Kullanıcı siler
-
-    - Adminler tüm kullanıcıları silebilir
-    - Normal kullanıcılar sadece kendilerini silebilir
-    """
-    # Yetki kontrolü
-    if current_user and current_user.status != 5 and current_user.user_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only delete your own account"
-        )
-
+    """Delete user account (Owner or Admin only)"""
     user = db.query(MobileUser).filter(MobileUser.user_id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    db.delete(user)
-    db.commit()
+
+    verify_owner_or_admin(current_user, user_id)
+
+    try:
+        db.delete(user)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Account deletion failed"
+        )

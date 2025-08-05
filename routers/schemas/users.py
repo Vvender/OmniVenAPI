@@ -47,32 +47,31 @@ class MobileUserBase(BaseModel):
         json_schema_extra={"example": "iPhone13,4"})
 
 
-# Response model that includes password (used when returning user data)
+# Response model excludes password
 class MobileUserResponse(MobileUserBase):
-    password: str = Field(
-        ...,
-        min_length=6,
-        max_length=50,
-        json_schema_extra={"example": "mypassword"})
+    # Keep this but ensure it doesn't require status from create request
+    class Config:
+        exclude = {"password"}  # Never return passwords
 
 
-# Update request model with optional password field
+# Update the request model with optional password field
 class MobileUserUpdateRequest(MobileUserBase):
     password: Optional[str] = Field(
         default=None,
         min_length=6,
-        max_length=50,
+        max_length=255,
         json_schema_extra={"example": "newpassword"})
 
 
 # Simplified model for user registration (create operation)
 class MobileUserCreateRequest(BaseModel):
-    """Public registration schema"""
+    """Registration schema with required company_id"""
     email: EmailStr
     username: str
-    password: constr(min_length=6)  # Constrained string type
+    password: constr(min_length=6)
     phone_number: str
-    company_id: Optional[int] = None  # Optional field
+    company_id: int = Field(..., gt=0)  # Required and must be > 0
 
+    # Remove status field completely
     class Config:
-        from_attributes = True  # ORM mode configuration (previously called orm_mode)
+        extra = "forbid"  # Prevent unexpected fields

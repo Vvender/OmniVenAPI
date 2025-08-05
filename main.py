@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routers import user, authentication
+from routers import user, authentication, register
 
 app = FastAPI(
     title="OmniVen API",
@@ -9,6 +9,7 @@ app = FastAPI(
 # Added routers
 app.include_router(user.router)
 app.include_router(authentication.router)
+app.include_router(register.router)
 
 @app.get("/")
 def root():

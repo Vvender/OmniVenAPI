@@ -10,8 +10,8 @@ from models import MobileUser
 
 # Initialize APIRouter with auth-specific prefix and tags
 router = APIRouter(
-    prefix="/auth/register",  # Base path for all endpoints in this router
-    tags=["Authentication"]  # Group in Swagger/OpenAPI docs
+    prefix="/user/register",  # Base path for all endpoints in this router
+    tags=["User"]  # Group in Swagger/OpenAPI docs
 )
 
 # Password hashing context using bcrypt algorithm
@@ -24,7 +24,7 @@ bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
     "/",
     status_code=status.HTTP_201_CREATED,  # Returns 201 on success
     response_model=MobileUserResponse,  # Shapes the response format
-    summary="Register new user",  # Short description in docs
+    summary="Register New User",  # Short description in docs
     response_description="The created user object"  # Response explanation
 )
 async def register_user(

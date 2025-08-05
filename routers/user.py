@@ -20,7 +20,6 @@ router = APIRouter(
 bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
 # Dependency tip tanımı (JWT korumalı endpoint'lerde kullanılacak)
-# Bu, oturum açmış kullanıcının bilgilerini getirecek
 current_user_dependency = Annotated[MobileUser, Depends(get_current_user)]
 
 
@@ -45,7 +44,7 @@ async def get_all_users(db: db_dependency, current_user: current_user_dependency
 async def get_user_by_id(
         db: db_dependency,
         user_id: int = Path(..., gt=0),
-        current_user: current_user_dependency = None  # Optional yapabilirsiniz
+        current_user: current_user_dependency = None
 ):
     """
     ID'ye göre kullanıcı getirir
@@ -71,7 +70,6 @@ async def get_user_by_id(
     return user
 
 
-# Yeni endpoint: Oturum açmış kullanıcının kendi bilgilerini getirir
 @router.get("/me", response_model=MobileUserResponse, summary="Get current user details")
 async def get_my_details(current_user: current_user_dependency):
     """
@@ -88,7 +86,7 @@ async def get_my_details(current_user: current_user_dependency):
 async def create_user(
         db: db_dependency,
         user_data: MobileUserRequest,
-        current_user: current_user_dependency = None  # Opsiyonel, admin kontrolü yapmak için
+        current_user: current_user_dependency = None
 ):
     """
     Yeni kullanıcı oluşturur (Adminler için)
@@ -136,7 +134,10 @@ async def create_user(
             password=hashed_password,
             status=user_data.status,
             phone_number=user_data.phone_number,
-            date_c=datetime.now()
+            date_c=datetime.now(),
+            date_expiration=user_data.date_expiration,
+            notification=user_data.notification,
+            device=user_data.device
         )
 
         db.add(new_user)
@@ -207,13 +208,15 @@ async def update_user(
     user.company_id = user_data.company_id
     user.email = user_data.email
     user.username = user_data.username
+    user.status = user_data.status
+    user.phone_number = user_data.phone_number
+    user.date_expiration = user_data.date_expiration
+    user.notification = user_data.notification
+    user.device = user_data.device
 
     # Şifre değişmişse hash'le
     if user_data.password:
         user.password = bcrypt_context.hash(user_data.password)
-
-    user.status = user_data.status
-    user.phone_number = user_data.phone_number
 
     db.commit()
     db.refresh(user)

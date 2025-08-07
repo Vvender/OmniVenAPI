@@ -1,6 +1,6 @@
 # authentication.py
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Dict
+from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt, JWTError
@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from routers.dependencies.connection import db_dependency
 from models import MobileUser
-
 
 # Initialize router with clear authentication prefix
 router = APIRouter(
@@ -39,12 +38,9 @@ class Token(BaseModel):
 
 # ------------------------------ CORE FUNCTIONS ------------------------------
 
-#def authenticate_user(username: str, password: str, db: Session) -> MobileUser | None:
-from typing import Union
-
-
 # noinspection PyTypeChecker
-def authenticate_user(username: str, password: str, db: Session) -> Union[MobileUser, None]:
+def authenticate_user(username: str, password: str, db: Session) -> MobileUser | None:
+
     """
     Authenticates user credentials against the database
 
@@ -88,18 +84,14 @@ def create_access_token(username: str, user_id: int) -> str:
 async def login_for_access_token(
         form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
         db: db_dependency
-) -> Dict[str, str]:  # Changed from dict[str, str] to Dict[str, str]
-    """
-    OAuth2 compatible token login endpoint
+) -> Any:
 
-    Returns:
-        Dictionary with access_token and token_type
-    """
     user = authenticate_user(form_data.username, form_data.password, db)
-    if not user:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",  # English error message
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"}
         )
     token = create_access_token(user.username, user.user_id)
     return {"access_token": token, "token_type": "bearer"}

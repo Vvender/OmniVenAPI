@@ -1,6 +1,6 @@
-# authentication.py (suggested more descriptive filename)
+# authentication.py
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import jwt, JWTError
@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from routers.dependencies.connection import db_dependency
 from models import MobileUser
+
 
 # Initialize router with clear authentication prefix
 router = APIRouter(
@@ -25,7 +26,7 @@ ACCESS_TOKEN_EXPIRE_DAYS = 365  # 1-year expiration
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 token bearer scheme
-oauth2_bearer = OAuth2PasswordBearer(tokenUrl="authentication/token")
+oauth2_bearer = OAuth2PasswordBearer(tokenUrl="/authentication/token")
 
 
 # ------------------------------ MODELS ------------------------------
@@ -38,8 +39,12 @@ class Token(BaseModel):
 
 # ------------------------------ CORE FUNCTIONS ------------------------------
 
+#def authenticate_user(username: str, password: str, db: Session) -> MobileUser | None:
+from typing import Union
+
+
 # noinspection PyTypeChecker
-def authenticate_user(username: str, password: str, db: Session) -> MobileUser | None:
+def authenticate_user(username: str, password: str, db: Session) -> Union[MobileUser, None]:
     """
     Authenticates user credentials against the database
 
@@ -83,7 +88,7 @@ def create_access_token(username: str, user_id: int) -> str:
 async def login_for_access_token(
         form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
         db: db_dependency
-) -> dict:
+) -> Dict[str, str]:  # Changed from dict[str, str] to Dict[str, str]
     """
     OAuth2 compatible token login endpoint
 
@@ -96,10 +101,8 @@ async def login_for_access_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",  # English error message
         )
-
     token = create_access_token(user.username, user.user_id)
     return {"access_token": token, "token_type": "bearer"}
-
 
 # ------------------------------ DEPENDENCIES ------------------------------
 
@@ -108,7 +111,7 @@ async def get_current_user(
         db: db_dependency
 ) -> MobileUser:
     """
-    Dependency to get current authenticated user from JWT token
+    Dependency to get the current authenticated user from JWT token
 
     Raises:
         HTTPException: 401 if token is invalid or user not found

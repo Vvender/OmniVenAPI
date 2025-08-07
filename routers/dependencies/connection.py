@@ -1,4 +1,4 @@
-# routers/dependencies/connection.py (updated)
+# routers/dependencies/connection.py
 from typing import Annotated
 from sqlalchemy.orm import Session
 from fastapi import Depends

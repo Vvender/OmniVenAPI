@@ -54,7 +54,7 @@ class MobileUserResponse(MobileUserBase):
         exclude = {"password"}  # Never return passwords
 
 
-# Update the request model with optional password field
+# Update the request model with the optional password field
 class MobileUserUpdateRequest(MobileUserBase):
     password: Optional[str] = Field(
         default=None,
@@ -72,6 +72,6 @@ class MobileUserCreateRequest(BaseModel):
     phone_number: str
     company_id: int = Field(..., gt=0)  # Required and must be > 0
 
-    # Remove status field completely
+    # Remove the status field completely
     class Config:
         extra = "forbid"  # Prevent unexpected fields

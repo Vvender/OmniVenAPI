@@ -24,7 +24,7 @@ router = APIRouter(
 # Password hashing context using bcrypt
 bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
-# Dependency to get current authenticated user
+# Dependency to get the current authenticated user
 current_user_dependency = Annotated[MobileUser, Depends(get_current_user)]
 
 #------------------------------ HELPER FUNCTIONS ------------------------------
@@ -38,7 +38,7 @@ def verify_admin(current_user: MobileUser):
         )
 
 def verify_owner_or_admin(current_user: MobileUser, user_id: int):
-    """Verify if requester is the account owner or an admin"""
+    """Verify if the requester is the account owner or an admin"""
     if current_user.user_id != user_id and current_user.status != 5:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -73,7 +73,7 @@ async def get_user(
         user_id: int = Path(..., gt=0),  # Path parameter must be > 0
         current_user: current_user_dependency = None
 ):
-    """Get specific user by ID (Owner or Admin only)"""
+    """Get the specific user by ID (Owner or Admin only)"""
     user = db.query(MobileUser).filter(MobileUser.user_id == user_id).first()
     if not user:
         raise HTTPException(
@@ -99,7 +99,7 @@ async def create_user(
 ):
     verify_admin(current_user)
 
-    # First validate company exists
+    # At First validate company exists
     company_exists = db.execute(
         text("SELECT 1 FROM acc_company WHERE company_id = :company_id"),
         {"company_id": user_data.company_id}
@@ -197,7 +197,7 @@ async def delete_user(
         user_id: int = Path(..., gt=0),
         current_user: current_user_dependency = None
 ):
-    """Delete user account (Owner or Admin only)"""
+    """Delete the user account (Owner or Admin only)"""
     user = db.query(MobileUser).filter(MobileUser.user_id == user_id).first()
     if not user:
         raise HTTPException(

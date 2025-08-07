@@ -28,8 +28,8 @@ bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
     response_description="The created user object"  # Response explanation
 )
 async def register_user(
-        db: db_dependency,  # Database session dependency
-        user_data: MobileUserCreateRequest  # Validated request data
+        db: db_dependency,
+        user_data: MobileUserCreateRequest
 ):
     """
     Public user registration endpoint
@@ -41,12 +41,12 @@ async def register_user(
     - phone_number: valid phone number format
 
     Optional field:
-    - company_id: reference to existing company
+    - company_id: reference to the existing company
     """
     try:
         # Validate company if provided
         if user_data.company_id:
-            # Check company exists in a database
+            # Check the company exists in a database
             company_exists = db.execute(
                 text("SELECT EXISTS(SELECT 1 FROM acc_company WHERE company_id = :company_id)"),
                 {"company_id": user_data.company_id}
@@ -66,7 +66,7 @@ async def register_user(
             phone_number=user_data.phone_number
         )
 
-        # Create new user with default values
+        # Create the new user with default values
         new_user = MobileUser(
             company_id=user_data.company_id,  # Maybe None
             email=user_data.email,
@@ -74,7 +74,7 @@ async def register_user(
             password=bcrypt_context.hash(user_data.password),  # Hashed password
             status=1,  # Default regular user status
             phone_number=user_data.phone_number,
-            date_c=datetime.now(),  # Set creation timestamp
+            date_c=datetime.now(),  # Set a creation timestamp
             date_expiration=None,  # No expiration by default
             notification=True,  # Enable notifications
             device=None  # No device info initially
